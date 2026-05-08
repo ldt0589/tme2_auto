@@ -1,0 +1,130 @@
+name: Playwright Tests
+
+on:
+  # Chạy tự động khi push lên các nhánh chính
+  push:
+    branches: [main, master, develop]
+  # Chạy khi có Pull Request
+  pull_request:
+    branches: [main, master, develop]
+  # Cho phép chạy thủ công từ GitHub UI
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Test environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - test
+          - staging
+          - production
+      grep:
+        description: 'Test filter (e.g. @smoke, @regression, or blank for all)'
+        required: false
+        default: ''
+
+# Cho phép deploy lên GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  test:
+    name: Run Playwright Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      ENV: ${{ github.event.inputs.env || 'staging' }}
+      USERNAME: ${{ secrets.TEST_USERNAME }}
+      PASSWORD: ${{ secrets.TEST_PASSWORD }}
+      # Uncomment nếu cần Basic Auth
+      # BASIC_AUTH_ENABLED: ${{ secrets.BASIC_AUTH_ENABLED }}
+      # BASIC_AUTH_USER: ${{ secrets.BASIC_AUTH_USER }}
+      # BASIC_AUTH_PASS: ${{ secrets.BASIC_AUTH_PASS }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Install Allure CLI
+        run: npm install -g allure-commandline --save-dev
+
+      - name: Run Playwright tests
+        run: |
+          if [ -n "${{ github.event.inputs.grep }}" ]; then
+            npx playwright test --grep "${{ github.event.inputs.grep }}"
+          else
+            npx playwright test
+          fi
+        continue-on-error: true
+
+      - name: Get Allure history from gh-pages
+        uses: actions/checkout@v4
+        if: always()
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Copy Allure history
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p allure-results/history
+          if [ -d "gh-pages/allure-report/history" ]; then
+            cp -r gh-pages/allure-report/history/. allure-results/history/
+          fi
+
+      - name: Generate Allure report
+        if: always()
+        run: allure generate ./allure-results --clean -o ./allure-report
+
+      - name: Deploy Allure report to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./allure-report
+          destination_dir: allure-report
+          keep_files: true
+
+      - name: Upload Allure results as artifact (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-${{ github.run_number }}
+          path: allure-results/
+          retention-days: 7
+
+      - name: Upload Allure report as artifact (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report-${{ github.run_number }}
+          path: allure-report/
+          retention-days: 30
+
+      - name: Print Allure Report URL
+        if: always()
+        run: |
+          REPO="${{ github.repository }}"
+          echo "=========================================="
+          echo "Allure Report URL:"
+          echo "https://${{ github.repository_owner }}.github.io/${REPO#*/}/allure-report/"
+          echo "=========================================="
