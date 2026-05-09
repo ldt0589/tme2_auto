@@ -1,13 +1,10 @@
 name: Playwright Tests
 
 on:
-  # Chạy tự động khi push lên các nhánh chính
   push:
     branches: [main, master, develop]
-  # Chạy khi có Pull Request
   pull_request:
     branches: [main, master, develop]
-  # Cho phép chạy thủ công từ GitHub UI
   workflow_dispatch:
     inputs:
       env:
@@ -24,7 +21,6 @@ on:
         required: false
         default: ''
 
-# Cho phép deploy lên GitHub Pages
 permissions:
   contents: write
   pages: write
@@ -40,7 +36,6 @@ jobs:
       ENV: ${{ github.event.inputs.env || 'staging' }}
       USERNAME: ${{ secrets.TEST_USERNAME }}
       PASSWORD: ${{ secrets.TEST_PASSWORD }}
-      # Uncomment nếu cần Basic Auth
       # BASIC_AUTH_ENABLED: ${{ secrets.BASIC_AUTH_ENABLED }}
       # BASIC_AUTH_USER: ${{ secrets.BASIC_AUTH_USER }}
       # BASIC_AUTH_PASS: ${{ secrets.BASIC_AUTH_PASS }}
@@ -55,6 +50,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Setup Java (required for Allure CLI)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install dependencies
         run: npm ci
 
@@ -62,7 +63,7 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: Install Allure CLI
-        run: npm install -g allure-commandline --save-dev
+        run: npm install -g allure-commandline
 
       - name: Run Playwright tests
         run: |
@@ -86,8 +87,8 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p allure-results/history
-          if [ -d "gh-pages/allure-report/history" ]; then
-            cp -r gh-pages/allure-report/history/. allure-results/history/
+          if [ -d "gh-pages/history" ]; then
+            cp -r gh-pages/history/. allure-results/history/
           fi
 
       - name: Generate Allure report
@@ -101,10 +102,9 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: ./allure-report
-          destination_dir: allure-report
-          keep_files: true
+          keep_files: false
 
-      - name: Upload Allure results as artifact (backup)
+      - name: Upload Allure results as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -112,7 +112,7 @@ jobs:
           path: allure-results/
           retention-days: 7
 
-      - name: Upload Allure report as artifact (backup)
+      - name: Upload Allure report as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -123,8 +123,7 @@ jobs:
       - name: Print Allure Report URL
         if: always()
         run: |
-          REPO="${{ github.repository }}"
           echo "=========================================="
           echo "Allure Report URL:"
-          echo "https://${{ github.repository_owner }}.github.io/${REPO#*/}/allure-report/"
+          echo "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
           echo "=========================================="
