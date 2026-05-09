@@ -1,0 +1,4 @@
+[Fixture] Browser/page ready — setting up loginPage fixture...
+[LoginPage] Navigating to home page
+[LoginPage] Home page loaded
+[LoginPage] Filling credentials for user: "tmeqeuser@gmail.com"
